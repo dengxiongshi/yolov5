@@ -3,31 +3,17 @@
 # Author: xiaoshi
 # FILE_NAME: xml_to_label
 # TIME:  11:54
-
+import glob
 import xml.etree.ElementTree as ET
 import os
+from tqdm import tqdm
+import cv2
 from os import getcwd
+from alive_progress import alive_bar
 
 import numpy as np
 import yaml
 
-
-wd = getcwd()
-print(wd)
-
-data_path = r"D:\python_code\yolo5_caffe_hisi3559\02.yolov5\board\20221202"
-
-# path = wd + data_path
-path = data_path
-
-my_yaml = path + "/board.yaml"
-
-# with open(my_yaml, errors='ignore') as f:
-#     classes = yaml.safe_load(f)['names']
-
-classes = ['unload', 'load']   # 改成自己的类别
-# abs_path = os.getcwd()
-# print(abs_path)
 
 def convert(size, box):
     dw = 1. / (size[0])
@@ -42,14 +28,19 @@ def convert(size, box):
     h = h * dh
     return x, y, w, h
 
-def convert_annotation(image_id):
-    in_file = open(path + '/Annotations/%s.xml' % (image_id), encoding='UTF-8')
-    out_file = open(path + '/labels/%s.txt' % (image_id), 'w')
+
+def convert_annotation(images, annotation, labels, classes, xml_id):
+    in_file = open(os.path.join(annotation, xml_id + ".xml"), encoding='UTF-8')
+    out_file = open(os.path.join(labels, xml_id + ".txt"), 'w')
+    img_file = os.path.join(images, xml_id + ".jpg")
+    img = cv2.imread(img_file)
+    h, w = img.shape[:2]
+
     tree = ET.parse(in_file)
     root = tree.getroot()
     size = root.find('size')
-    w = int(size.find('width').text)
-    h = int(size.find('height').text)
+    width = int(size.find('width').text)
+    height = int(size.find('height').text)
     for obj in root.iter('object'):
         difficult = obj.find('difficult').text
         cls = obj.find('name').text
@@ -70,14 +61,52 @@ def convert_annotation(image_id):
         out_file.write(str(cls_id) + " " + " ".join([str(a) for a in bb]) + '\n')
 
 
-if not os.path.exists(path + '/labels/'):
-    os.makedirs(path + '/labels/')
+if __name__ == "__main__":
+    # classes = ["face",
+    #            "person",
+    #            "car",
+    #            "bus",
+    #            "aeroplane",
+    #            "bicycle",
+    #            "bird",
+    #            "boat",
+    #            "bottle",
+    #            "cat",
+    #            "chair",
+    #            "cow",
+    #            "diningtable",
+    #            "dog",
+    #            "horse",
+    #            "motorbike",
+    #            "pottedplant",
+    #            "sheep",
+    #            "sofa",
+    #            "train",
+    #            "tvmonitor"
+    #            ]
 
-# xml文件存放目录
-annotations_dir = path + '/Annotations'
-xmlfiles = os.listdir(annotations_dir)
+    classes = ["face",
+               "person",
+               "car",
+               "bus",
+               "truck"
+               ]
 
-for image_id in xmlfiles:
-    image = os.path.splitext(image_id)[0]
-    convert_annotation(image)
+    image_dir = r"E:\downloads\compress\datasets\yolo_wider\val\new\images"
+    annotations_dir = r"E:\downloads\compress\datasets\yolo_wider\val\new\Annotations"
+    labels_dir = r"E:\downloads\compress\datasets\yolo_wider\val\new\labels"
 
+    if not os.path.exists(labels_dir):
+        os.makedirs(labels_dir)
+
+    # xmlfiles = os.listdir(annotations_dir)
+
+    files = glob.glob(annotations_dir + '/*.xml')
+    pbar = tqdm(files, desc=f'Converting {annotations_dir}')  # 进度条
+
+    for file in pbar:
+        # if xml_id == 15:
+        name = os.path.basename(file)
+        xml = os.path.splitext(name)[0]
+        # print(file)
+        convert_annotation(image_dir, annotations_dir, labels_dir, classes, xml)
