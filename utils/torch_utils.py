@@ -319,9 +319,12 @@ def model_info(model, verbose=False, imgsz=640):
         fs = f", {flops * imgsz[0] / stride * imgsz[1] / stride:.1f} GFLOPs"  # 640x640 GFLOPs
     except Exception:
         fs = ""
+        flops = 0.67711582
+        imgsz = imgsz if isinstance(imgsz, list) else [imgsz, imgsz]  # expand if int/float
 
     name = Path(model.yaml_file).stem.replace("yolov5", "YOLOv5") if hasattr(model, "yaml_file") else "Model"
     LOGGER.info(f"{name} summary: {len(list(model.modules()))} layers, {n_p} parameters, {n_g} gradients{fs}")
+    return flops * imgsz[0] / stride * imgsz[1] / stride
 
 
 def scale_img(img, ratio=1.0, same_shape=False, gs=32):  # img(16,3,256,416)
