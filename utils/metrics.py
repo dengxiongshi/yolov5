@@ -3,7 +3,9 @@
 
 import math
 import warnings
+from collections import OrderedDict
 from pathlib import Path
+from sklearn import metrics as skmetrics
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -227,7 +229,8 @@ class ConfusionMatrix:
             print(" ".join(map(str, self.matrix[i])))
 
 
-def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7):
+def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, FIoU=False, SIoU=False, EIoU=False, PIoU=False,
+             PIoU2=False, Lambda=1.3, eps=1e-7, d=0.00, u=0.95, alpha=1):
     """
     Calculates IoU, GIoU, DIoU, or CIoU between two boxes, supporting xywh/xyxy formats.
 
@@ -248,7 +251,7 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7
 
     # Intersection area
     inter = (b1_x2.minimum(b2_x2) - b1_x1.maximum(b2_x1)).clamp(0) * (
-        b1_y2.minimum(b2_y2) - b1_y1.maximum(b2_y1)
+            b1_y2.minimum(b2_y2) - b1_y1.maximum(b2_y1)
     ).clamp(0)
 
     # Union Area
@@ -256,18 +259,60 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7
 
     # IoU
     iou = inter / union
-    if CIoU or DIoU or GIoU:
+    if CIoU or DIoU or GIoU or FIoU or SIoU or PIoU or PIoU2:
+        if FIoU:  # https://github.com/malagoutou/Focaler-IoU
+            return ((iou - d) / (u - d)).clamp(0, 1)
+
+        if PIoU or PIoU2:  # https://github.com/fppccc/Powerful-IoU/tree/main
+            dw1 = torch.abs(b1_x2.minimum(b1_x1) - b2_x2.minimum(b2_x1))
+            dw2 = torch.abs(b1_x2.maximum(b1_x1) - b2_x2.maximum(b2_x1))
+            dh1 = torch.abs(b1_y2.minimum(b1_y1) - b2_y2.minimum(b2_y1))
+            dh2 = torch.abs(b1_y2.maximum(b1_y1) - b2_y2.maximum(b2_y1))
+            P = ((dw1 + dw2) / torch.abs(w2) + (dh1 + dh2) / torch.abs(h2)) / 4
+            L_v1 = 1 - iou - torch.exp(-P ** 2) + 1
+            if PIoU:
+                return 1 - L_v1
+            else:
+                q = torch.exp(-P)
+                x = q * Lambda
+                return 1 - 3 * x * torch.exp(-x ** 2) * L_v1
+
         cw = b1_x2.maximum(b2_x2) - b1_x1.minimum(b2_x1)  # convex (smallest enclosing box) width
         ch = b1_y2.maximum(b2_y2) - b1_y1.minimum(b2_y1)  # convex height
-        if CIoU or DIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
-            c2 = cw**2 + ch**2 + eps  # convex diagonal squared
+        if CIoU or DIoU or SIoU or EIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
+            c2 = cw ** 2 + ch ** 2 + eps  # convex diagonal squared
             rho2 = ((b2_x1 + b2_x2 - b1_x1 - b1_x2) ** 2 + (b2_y1 + b2_y2 - b1_y1 - b1_y2) ** 2) / 4  # center dist ** 2
             if CIoU:  # https://github.com/Zzh-tju/DIoU-SSD-pytorch/blob/master/utils/box/box_utils.py#L47
-                v = (4 / math.pi**2) * (torch.atan(w2 / h2) - torch.atan(w1 / h1)).pow(2)
+                v = (4 / math.pi ** 2) * (torch.atan(w2 / h2) - torch.atan(w1 / h1)).pow(2)
                 with torch.no_grad():
                     alpha = v / (v - iou + (1 + eps))
                 return iou - (rho2 / c2 + v * alpha)  # CIoU
-            return iou - rho2 / c2  # DIoU
+            elif EIoU:
+                rho_w2 = ((b2_x2 - b2_x1) - (b1_x2 - b1_x1)) ** 2
+                rho_h2 = ((b2_y2 - b2_y1) - (b1_y2 - b1_y1)) ** 2
+                cw2 = torch.pow(cw ** 2 + eps, alpha)
+                ch2 = torch.pow(ch ** 2 + eps, alpha)
+                return iou - (rho2 / c2 + rho_w2 / cw2 + rho_h2 / ch2)  # EIou
+            elif SIoU:
+                # SIoU Loss https://arxiv.org/pdf/2205.12740.pdf
+                s_cw = (b2_x1 + b2_x2 - b1_x1 - b1_x2) * 0.5 + eps
+                s_ch = (b2_y1 + b2_y2 - b1_y1 - b1_y2) * 0.5 + eps
+                sigma = torch.pow(s_cw ** 2 + s_ch ** 2, 0.5)
+                sin_alpha_1 = torch.abs(s_cw) / sigma
+                sin_alpha_2 = torch.abs(s_ch) / sigma
+                threshold = pow(2, 0.5) / 2
+                sin_alpha = torch.where(sin_alpha_1 > threshold, sin_alpha_2, sin_alpha_1)
+                angle_cost = torch.cos(torch.arcsin(sin_alpha) * 2 - math.pi / 2)
+                rho_x = (s_cw / cw) ** 2
+                rho_y = (s_ch / ch) ** 2
+                gamma = angle_cost - 2
+                distance_cost = 2 - torch.exp(gamma * rho_x) - torch.exp(gamma * rho_y)
+                omiga_w = torch.abs(w1 - w2) / torch.max(w1, w2)
+                omiga_h = torch.abs(h1 - h2) / torch.max(h1, h2)
+                shape_cost = torch.pow(1 - torch.exp(-1 * omiga_w), 4) + torch.pow(1 - torch.exp(-1 * omiga_h), 4)
+                return iou - 0.5 * (distance_cost + shape_cost)
+            else:
+                return iou - rho2 / c2  # DIoU
         c_area = cw * ch + eps  # convex area
         return iou - (c_area - union) / c_area  # GIoU https://arxiv.org/pdf/1902.09630.pdf
     return iou  # IoU
@@ -311,7 +356,7 @@ def bbox_ioa(box1, box2, eps=1e-7):
 
     # Intersection area
     inter_area = (np.minimum(b1_x2, b2_x2) - np.maximum(b1_x1, b2_x1)).clip(0) * (
-        np.minimum(b1_y2, b2_y2) - np.maximum(b1_y1, b2_y1)
+            np.minimum(b1_y2, b2_y2) - np.maximum(b1_y1, b2_y1)
     ).clip(0)
 
     # box2 area
@@ -380,3 +425,158 @@ def plot_mc_curve(px, py, save_dir=Path("mc_curve.png"), names=(), xlabel="Confi
     ax.set_title(f"{ylabel}-Confidence Curve")
     fig.savefig(save_dir, dpi=250)
     plt.close(fig)
+
+
+def subset_accuracy(true_targets, predictions, per_sample=False, axis=0):
+    # print(true_targets.shape)
+    # print(predictions.shape)
+    result = np.all(true_targets == predictions, axis=axis)
+
+    if not per_sample:
+        result = np.mean(result)
+
+    return result
+
+
+def hamming_loss(true_targets, predictions, per_sample=False, axis=0):
+    result = np.mean(np.logical_xor(true_targets, predictions),
+                     axis=axis)
+
+    if not per_sample:
+        result = np.mean(result)
+
+    return result
+
+
+def compute_tp_fp_fn(true_targets, predictions, axis=0):
+    # axis: axis for instance
+    tp = np.sum(true_targets * predictions, axis=axis).astype('float32')
+    fp = np.sum(np.logical_not(true_targets) * predictions,
+                axis=axis).astype('float32')
+    fn = np.sum(true_targets * np.logical_not(predictions),
+                axis=axis).astype('float32')
+
+    return (tp, fp, fn)
+
+
+def example_f1_score(true_targets, predictions, per_sample=False, axis=0):
+    tp, fp, fn = compute_tp_fp_fn(true_targets, predictions, axis=axis)
+
+    numerator = 2 * tp
+    denominator = (np.sum(true_targets, axis=axis).astype('float32') + np.sum(predictions, axis=axis).astype('float32'))
+
+    zeros = np.where(denominator == 0)[0]
+
+    denominator = np.delete(denominator, zeros)
+    numerator = np.delete(numerator, zeros)
+
+    example_f1 = numerator / denominator
+
+    if per_sample:
+        f1 = example_f1
+    else:
+        f1 = np.mean(example_f1)
+
+    return f1
+
+
+def f1_score_from_stats(tp, fp, fn, average='micro'):
+    assert len(tp) == len(fp)
+    assert len(fp) == len(fn)
+
+    if average not in set(['micro', 'macro']):
+        raise ValueError("Specify micro or macro")
+
+    if average == 'micro':
+        f1 = 2 * np.sum(tp) / \
+             float(2 * np.sum(tp) + np.sum(fp) + np.sum(fn))
+
+    elif average == 'macro':
+
+        def safe_div(a, b):
+            """ ignore / 0, div0( [-1, 0, 1], 0 ) -> [0, 0, 0] """
+            with np.errstate(divide='ignore', invalid='ignore'):
+                c = np.true_divide(a, b)
+            return c[np.isfinite(c)]
+
+        f1 = np.mean(safe_div(2 * tp, 2 * tp + fp + fn))
+
+    return f1
+
+
+def f1_score(true_targets, predictions, average='micro', axis=0):
+    """
+        average: str
+            'micro' or 'macro'
+        axis: 0 or 1
+            label axis
+    """
+    if average not in set(['micro', 'macro']):
+        raise ValueError("Specify micro or macro")
+
+    tp, fp, fn = compute_tp_fp_fn(true_targets, predictions, axis=axis)
+    f1 = f1_score_from_stats(tp, fp, fn, average=average)
+
+    return f1
+
+
+def compute_metrics(all_predictions,
+                    all_targets,
+                    conf_thres=0.5,
+                    elapsed=0,
+                    verbose=True):
+    meanAP = skmetrics.average_precision_score(all_targets, all_predictions, average='macro', pos_label=1)
+
+    # optimal_threshold = 0.5
+    #
+    all_predictions_thresh = all_predictions.copy()
+    all_predictions_thresh[all_predictions_thresh < conf_thres] = 0
+    all_predictions_thresh[all_predictions_thresh >= conf_thres] = 1
+    CP = skmetrics.precision_score(all_targets, all_predictions_thresh, average='macro')
+    CR = skmetrics.recall_score(all_targets, all_predictions_thresh, average='macro')
+    CF1 = (2 * CP * CR) / (CP + CR)
+    OP = skmetrics.precision_score(all_targets, all_predictions_thresh, average='micro')
+    OR = skmetrics.recall_score(all_targets, all_predictions_thresh, average='micro')
+    OF1 = (2 * OP * OR) / (OP + OR)
+
+    acc_ = list(subset_accuracy(all_targets, all_predictions_thresh, axis=1, per_sample=True))
+    hl_ = list(hamming_loss(all_targets, all_predictions_thresh, axis=1, per_sample=True))
+    exf1_ = list(example_f1_score(all_targets, all_predictions_thresh, axis=1, per_sample=True))
+    acc = np.mean(acc_)
+    hl = np.mean(hl_)
+    exf1 = np.mean(exf1_)
+
+    eval_ret = OrderedDict([('Subset accuracy', acc),
+                            ('Hamming accuracy', 1 - hl),
+                            ('Example-based F1', exf1),
+                            ('Label-based Micro F1', OF1),
+                            ('Label-based Macro F1', CF1)])
+
+    ACC = eval_ret['Subset accuracy']
+    HA = eval_ret['Hamming accuracy']
+    ebF1 = eval_ret['Example-based F1']
+    OF1 = eval_ret['Label-based Micro F1']
+    CF1 = eval_ret['Label-based Macro F1']
+
+    if verbose:
+        print('mAP:   {:0.1f}'.format(meanAP * 100))
+        print('----')
+        print('CP:    {:0.1f}'.format(CP * 100))
+        print('CR:    {:0.1f}'.format(CR * 100))
+        print('CF1:   {:0.1f}'.format(CF1 * 100))
+        print('OP:    {:0.1f}'.format(OP * 100))
+        print('OR:    {:0.1f}'.format(OR * 100))
+        print('OF1:   {:0.1f}'.format(OF1 * 100))
+
+    metrics_dict = {}
+    metrics_dict['mAP'] = meanAP
+    metrics_dict['ACC'] = ACC
+    metrics_dict['HA'] = HA
+    metrics_dict['ebF1'] = ebF1
+    metrics_dict['OF1'] = OF1
+    metrics_dict['CF1'] = CF1
+    metrics_dict['time'] = elapsed
+
+    # print('')
+
+    return metrics_dict

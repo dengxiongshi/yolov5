@@ -53,6 +53,37 @@ def smartCrossEntropyLoss(label_smoothing=0.0):
     return nn.CrossEntropyLoss()
 
 
+def smartBCEWithLogitsLoss(label_smoothing=0.0):
+    """Returns a BCEWithLogitsLoss with optional label smoothing for torch>=1.10.0; warns if smoothing on lower
+    versions.
+    """
+    if check_version(torch.__version__, "1.10.0"):
+        return nn.BCEWithLogitsLoss(label_smoothing=label_smoothing)
+    if label_smoothing > 0:
+        LOGGER.warning(f"WARNING ⚠️ label smoothing {label_smoothing} requires torch>=1.10.0")
+    return nn.BCEWithLogitsLoss()
+
+
+def smartBCELoss(label_smoothing=0.0):
+    """Returns a BCEWithLogitsLoss with optional label smoothing for torch>=1.10.0; warns if smoothing on lower
+    versions.
+    """
+    if check_version(torch.__version__, "1.10.0"):
+        return nn.BCELoss(label_smoothing=label_smoothing)
+    if label_smoothing > 0:
+        LOGGER.warning(f"WARNING ⚠️ label smoothing {label_smoothing} requires torch>=1.10.0")
+    return nn.BCELoss()
+
+
+class MultiLabelBCELoss(nn.Module):
+    def __init__(self):
+        super(MultiLabelBCELoss, self).__init__()
+        self.loss_fn = nn.BCELoss()
+
+    def forward(self, outputs, targets):
+        return self.loss_fn(outputs, targets)
+
+
 def smart_DDP(model):
     """Initializes DistributedDataParallel (DDP) for model training, respecting torch version constraints."""
     assert not check_version(torch.__version__, "1.12.0", pinned=True), (

@@ -466,5 +466,5 @@ def web_project_name(project):
     """Converts a local project name to a standardized web project name with optional suffixes."""
     if not project.startswith("runs/train"):
         return project
-    suffix = "-Classify" if project.endswith("-cls") else "-Segment" if project.endswith("-seg") else ""
+    suffix = "-Classify" if project.endswith("-cls") else "-Segment" if project.endswith("-seg") else "-MLClassify" if project.endswith("-mlcls") else ""
     return f"YOLOv5{suffix}"
