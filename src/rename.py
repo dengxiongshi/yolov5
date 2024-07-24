@@ -37,7 +37,8 @@ def rename_files(directory):
             os.rename(old_path, new_path)
 
         else:
-            new_name = "20240131_" + f"{i + 0:08d}{file_ext}"
+            new_name = "rain_20240614_" + f"{i + 0:08d}{file_ext}"
+            # new_name = "thunder_" + basename
             # 构建完整的路径
             old_path = os.path.join(directory, file_name)
             new_path = os.path.join(directory, new_name)
@@ -48,7 +49,7 @@ def rename_files(directory):
 
 if __name__ == "__main__":
     # 指定目标目录
-    target_directory = r"E:\downloads\compress\datasets\video\20240131\images"
+    target_directory = r"E:\downloads\compress\datasets\天气\video\rain\images"
 
     # 调用函数进行文件重命名
     rename_files(target_directory)

@@ -95,17 +95,17 @@ if __name__ == "__main__":
     #            "tvmonitor"
     #            ]
 
-    classes = ["face",
-               "person",
-               "car",
-               "bus",
-               "truck"
-               ]
-    # classes = ["fire", "smoke"]
+    # classes = ["face",
+    #            "person",
+    #            "car",
+    #            "bus",
+    #            "truck"
+    #            ]
+    classes = ["fire", "smoke"]
 
-    image_dir = r"E:\downloads\compress\datasets\video\2024_01_18\images"
-    annotations_dir = r"E:\downloads\compress\datasets\video\2024_01_18\Annotations"
-    labels_dir = r"E:\downloads\compress\datasets\video\2024_01_18\labels"
+    image_dir = r"E:\downloads\compress\datasets\fire_smoke\fire-8\test\images"
+    annotations_dir = r"E:\downloads\compress\datasets\fire_smoke\fire-8\test\Anotations"
+    labels_dir = r"E:\downloads\compress\datasets\fire_smoke\fire-8\test\labels"
 
     if not os.path.exists(labels_dir):
         os.makedirs(labels_dir)

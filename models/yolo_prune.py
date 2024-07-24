@@ -529,12 +529,13 @@ def parse_model(d, ch, pruning=False):  # model_dict, input_channels(3)
         if i == 0:
             ch = []
         ch.append(c2)
+    print(ch)
     return nn.Sequential(*layers), sorted(save)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default=r'D:\python_work\yolov5\models\pruneModels\DWContrans2d_FRM.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default='pruneModels/test.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', default=True, action='store_true', help='profile model speed')
