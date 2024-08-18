@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
 if platform.system() != 'Windows':
     ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
-from models.common import *  # noqa
+from models.common_prune import *  # noqa
 from models.experimental import *  # noqa
 from utils.autoanchor import check_anchor_order
 from utils.general import LOGGER, check_version, check_yaml, make_divisible, print_args
@@ -450,19 +450,19 @@ def parse_model(d, ch, pruning=False):  # model_dict, input_channels(3)
                 Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, DownConv, MixConv2d, Focus, CrossConv,
                 BottleneckCSP, C3, C3_Faster, C3TR, C3STR, C3SPP, C3Ghost, ODConv_3rd, ConvNextBlock, StemBlock, nn.ConvTranspose2d, DWConvTranspose2d,
                 DWContrans2d, C3x, C2f, DenseBlock, PyConv4, CSPStage, RepVGGBlock, SEBlock, GSConv, VoVGSCSP, VoVGSCSPC,
-                C3_prune, SPP_prune, SPPF_prune, Conv_prune}:
+                }:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2_ = make_divisible(c2 * gw, 8)
                 # ------ Pruning parts --------
-                if isinstance(args[-1], float) and m not in {SPP_prune, SPPF_prune}:
+                if isinstance(args[-1], float) and m not in {SPP, SPPF}:
                     c2 = c2 * args[-1]
                     args = args[:-1]
                 c2 = max(make_divisible(c2 * gw, 8), 8)
                 # ------ Pruning parts --------
 
             args = [c1, c2, *args[1:]]
-            if m is C3_prune:
+            if m is C3:
                 args.insert(2, c2_)
                 args.insert(3, n)
             if m in {BottleneckCSP, C3_Faster, C3TR, C3Ghost, C3x, C2f, DenseBlock, CSPStage, VoVGSCSP, VoVGSCSPC}:

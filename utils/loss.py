@@ -152,8 +152,26 @@ class ComputeLoss:
                 pxy = pxy.sigmoid() * 2 - 0.5
                 pwh = (pwh.sigmoid() * 2) ** 2 * anchors[i]
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
-                iou = bbox_iou(pbox, tbox[i], GIoU=True).squeeze()  # iou(prediction, target)
-                lbox += (1.0 - iou).mean()  # iou loss
+                # iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
+                # # 引入 Focaler-IoU 回归样本
+                # # default d=0.00,u=0.95
+                # d = 0.00
+                # u = 0.95
+                # # iou = ((iou - d) / (u - d)).clamp(0, 1)   # https://github.com/malagoutou/Focaler-IoU
+                # iou = 1 if iou > u else (0 if iou < d else ((iou - d) / (u - d)).clamp(0, 1))  # 根据公式重构 Focaler-IoU
+
+                # lbox += (1.0 - iou).mean()  # iou loss
+                iou = bbox_iou(pbox, tbox[i], WIoU=True, scale=True)
+                if type(iou) is tuple:
+                    if len(iou) == 2:
+                        lbox += (iou[1].detach().squeeze() * (1 - iou[0].squeeze())).mean()
+                        iou = iou[0].squeeze()
+                    else:
+                        lbox += (iou[0] * iou[1]).mean()
+                        iou = iou[2].squeeze()
+                else:
+                    lbox += (1.0 - iou.squeeze()).mean()  # iou loss
+                    iou = iou.squeeze()
 
                 # Objectness
                 iou = iou.detach().clamp(0).type(tobj.dtype)
