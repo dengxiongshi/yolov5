@@ -33,7 +33,8 @@ def convert(size, box):
 def convert_annotation(images, annotation, labels, classes, xml_id):
     in_file = open(os.path.join(annotation, xml_id + ".xml"), encoding='UTF-8')
     out_file = open(os.path.join(labels, xml_id + ".txt"), 'w')
-    img_file = os.path.join(images, xml_id + ".jpg")
+    # img_file = os.path.join(images, xml_id + ".jpg")
+    img_file = images
     img = cv2.imread(img_file)
     h, w = img.shape[:2]
 
@@ -43,7 +44,7 @@ def convert_annotation(images, annotation, labels, classes, xml_id):
     width = int(size.find('width').text)
     height = int(size.find('height').text)
     for obj in root.iter('object'):
-        difficult = obj.find('difficult').text
+        # difficult = obj.find('difficult').text
         cls = obj.find('name').text
         # if cls not in classes or int(difficult) == 1:
         if cls not in classes:
@@ -67,7 +68,7 @@ def process_file(file):
     # 这里的pbar是线程专用的进度条
     name = os.path.basename(file)
     xml = os.path.splitext(name)[0]
-    convert_annotation(image_dir, annotations_dir, labels_dir, classes, xml)
+    convert_annotation(file, annotations_dir, labels_dir, classes, xml)
     # pbar.update()  # 更新进度条
 
 
@@ -101,27 +102,37 @@ if __name__ == "__main__":
     #            "bus",
     #            "truck"
     #            ]
-    classes = ["fire", "smoke"]
+    # classes = ["ore carrier",
+    #             "passenger ship",
+    #             "container ship",
+    #             "bulk cargo carrier",
+    #             "general cargo ship",
+    #             "fishing boat",
+    #             "patrol boat"]
+    classes = ["boat"]
 
-    image_dir = r"E:\downloads\compress\datasets\fire_smoke\fire-8\test\images"
-    annotations_dir = r"E:\downloads\compress\datasets\fire_smoke\fire-8\test\Anotations"
-    labels_dir = r"E:\downloads\compress\datasets\fire_smoke\fire-8\test\labels"
+    IMG_FORMATS = "bmp", "dng", "jpeg", "jpg", "mpo", "png", "tif", "tiff", "webp", "pfm"  # include image suffixes
+
+    image_dir = r"F:\BaiduNetdiskDownload\BoadData\myDataset\new_images"
+    annotations_dir = r"F:\BaiduNetdiskDownload\BoadData\myDataset\annotations"
+    labels_dir = r"F:\BaiduNetdiskDownload\BoadData\myDataset\labels"
 
     if not os.path.exists(labels_dir):
         os.makedirs(labels_dir)
 
     # xmlfiles = os.listdir(annotations_dir)
+    files = sorted(glob.glob(os.path.join(image_dir, "*.*")))
+    images = [x for x in files if x.split(".")[-1].lower() in IMG_FORMATS]
+    # files = glob.glob(image_dir + '/*.jpg')
 
-    files = glob.glob(image_dir + '/*.jpg')
-
-    total_files = len(files)
+    total_files = len(images)
 
     # 创建一个总的进度条
     with tqdm(total=total_files, desc=f'Converting {image_dir}', ncols=100) as pbar:
         # 创建一个线程池
         with futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
             # 提交任务到线程池
-            future = [executor.submit(process_file, file) for file in files]
+            future = [executor.submit(process_file, file) for file in images]
 
             # 等待所有任务完成并更新进度条
             for future in futures.as_completed(future):

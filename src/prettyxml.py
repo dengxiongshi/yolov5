@@ -1,6 +1,7 @@
 import glob
 import os
 import xml.dom.minidom
+import xml.etree.ElementTree as ET
 
 from tqdm import tqdm
 
@@ -21,11 +22,24 @@ def format_xml(input_file, output_file):
         output_file.write(pretty_xml)
 
 
+def edit_xml(input_file, output_file):
+    tree = ET.parse(input_file)
+    root = tree.getroot()
+    path = root.find('path')
+    basename = os.path.basename(path.text)
+
+    path_value = os.path.join(image_path, basename)
+    path.text = path_value
+
+    tree.write(output_file)
+
+
 if __name__ == "__main__":
 
-    xml_path = r"E:\downloads\compress\datasets\fire_smoke\DFS\fireDetectVOCfinal\Annotations"
+    xml_path = r"F:\BaiduNetdiskDownload\BoadData\seaships\annotations"
+    image_path = r"F:\BaiduNetdiskDownload\BoadData\seaships\images"
 
-    save_dir = xml_path.replace('Annotations', 'Annotations_label')
+    save_dir = xml_path.replace('annotations', 'Annotations_label')
 
     if os.path.exists(save_dir)  == False:
         os.makedirs(save_dir)
@@ -36,7 +50,7 @@ if __name__ == "__main__":
 
     for file in pbar:
         input_file = file
-        output_file = input_file.replace('Annotations', 'Annotations_label')
+        output_file = input_file.replace('annotations', 'Annotations_label')
 
-        format_xml(input_file, output_file)
+        edit_xml(input_file, output_file)
 

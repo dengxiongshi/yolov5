@@ -3,7 +3,7 @@ import glob
 from tqdm import tqdm
 
 
-def change_label(source_file, destination_file):
+def change_label(source_file, destination_file, mode='w'):
     with open(source_file, 'r') as source:
         data = [line.strip() for line in source.readlines() if line.strip()]
 
@@ -12,12 +12,13 @@ def change_label(source_file, destination_file):
         parts = line.split()
         if len(parts) > 0:
             number = int(parts[0])
-            if number == 3 or number == 4:
-                parts[0] = '2'
+            if number != 0:
+                if number in [3, 4]:
+                    parts[0] = '2'
 
-            labels.append(' '.join(parts))
+                labels.append(' '.join(parts))
 
-    with open(destination_file, 'a') as destination:
+    with open(destination_file, mode) as destination:
         destination.write('\n'.join(labels))
 
 
@@ -37,9 +38,15 @@ def del_label(source_file, destination_file):
         destination.write('\n'.join(labels))
 
 
+def get_files(directory):
+    files = [os.path.join(directory, file) for file in os.listdir(directory) if
+             os.path.isfile(os.path.join(directory, file))]
+    return files
+
+
 if __name__ == "__main__":
-    src_label = r"E:\downloads\compress\datasets\licensePlate_detect\detect_plate_datasets\train_data\CRPD_TRAIN"
-    save_label = r"E:\downloads\compress\datasets\licensePlate_detect\detect_plate_datasets\train_data\CRPD_TRAIN\labels"
+    src_label = r"E:\downloads\compress\datasets\VisDrone2019\train_data\labels\val"
+    save_label = r"E:\downloads\compress\datasets\VisDrone2019\train_data\labels\val_new"
 
     if os.path.exists(save_label) == False:
         os.makedirs(save_label)
@@ -53,4 +60,4 @@ if __name__ == "__main__":
         src_name = os.path.basename(src_file)
 
         save_file = os.path.join(save_label, src_name)
-        del_label(src_file, save_file)
+        change_label(src_file, save_file)
