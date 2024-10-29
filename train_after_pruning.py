@@ -107,7 +107,7 @@ def train(hyp, opt, device, callbacks):
 
     `hyp` argument is path/to/hyp.yaml or hyp dictionary.
     """
-    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze = (
+    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, prune = (
         Path(opt.save_dir),
         opt.epochs,
         opt.batch_size,
@@ -121,6 +121,7 @@ def train(hyp, opt, device, callbacks):
         opt.nosave,
         opt.workers,
         opt.freeze,
+        opt.prune,
     )
     callbacks.run("on_pretrain_routine_start")
 
@@ -196,37 +197,46 @@ def train(hyp, opt, device, callbacks):
         model = Model(cfg, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)  # create
     amp = check_amp(model)  # check AMP
 
-    if opt.prune:
+    # Image size
+    gs = max(int(model.stride.max()), 32)  # grid size (max stride)
+    imgsz = check_img_size(opt.imgsz, gs, floor=gs * 2)  # verify imgsz is gs-multiple
+
+    if prune and not resume:
         ################################################################################
         # Pruning
         import torch_pruning as tp
-        # model.eval()
-        print(model)
-        example_inputs = torch.randn(1, 3, opt.imgsz, opt.imgsz).to(device)
-        imp = tp.importance.MagnitudeImportance(p=2)  # L2 norm pruning
+        model.eval()
+        # print("===============================\n", model)
+        example_inputs = torch.randn(1, 3, imgsz, imgsz).to(device)
 
-        ignored_layers = []
-        # from models.yolo import Detect
-        for m in model.modules():
-            if isinstance(m, (Detect, Segment)):
-                ignored_layers.append(m)
-        # iterative_steps = 1  # progressive pruning
-        pruner = tp.pruner.MagnitudePruner(
-            model,
-            example_inputs,
-            importance=imp,
-            iterative_steps=opt.iterative_steps,
-            pruning_ratio=opt.target_prune_rate,
-            # remove 50% channels, ResNet18 = {64, 128, 256, 512} => ResNet18_Half = {32, 64, 128, 256}
-            ignored_layers=ignored_layers,
-        )
         base_macs, base_nparams = tp.utils.count_ops_and_params(model, example_inputs)
+        print("Before Pruning: MACs=%f G, Params=%f G" % (base_macs / 1e9, base_nparams / 1e9))
 
-        pruner.step()
-        pruned_macs, pruned_nparams = tp.utils.count_ops_and_params(model, example_inputs)
-        print(model)
-        print("Before Pruning: MACs=%f G, #Params=%f G" % (base_macs / 1e9, base_nparams / 1e9))
-        print("After Pruning: MACs=%f G, #Params=%f G" % (pruned_macs / 1e9, pruned_nparams / 1e9))
+        for i in range(opt.iterative_steps):
+            imp = tp.importance.MagnitudeImportance(p=2)  # L2 norm pruning
+
+            ignored_layers = []
+            # from models.yolo import Detect
+            for m in model.modules():
+                if isinstance(m, (Detect, Segment)):
+                    ignored_layers.append(m)
+            iterative_steps = 1  # progressive pruning
+            pruner = tp.pruner.MagnitudePruner(
+                model,
+                example_inputs,
+                importance=imp,
+                global_pruning=False,
+                iterative_steps=iterative_steps,
+                pruning_ratio=opt.target_prune_rate, # remove 50% channels, ResNet18 = {64, 128, 256, 512} => ResNet18_Half = {32, 64, 128, 256}
+                ignored_layers=ignored_layers,
+            )
+
+            pruner.step()
+            pruned_macs, pruned_nparams = tp.utils.count_ops_and_params(model, example_inputs)
+            # print("===============================\n", model)
+            print("After Pruning iter %d: MACs=%f G, Params=%f G" % (i + 1, pruned_macs / 1e9, pruned_nparams / 1e9))
+
+            del pruner
         ####################################################################################
 
     # Freeze
@@ -237,10 +247,6 @@ def train(hyp, opt, device, callbacks):
         if any(x in k for x in freeze):
             LOGGER.info(f"freezing {k}")
             v.requires_grad = False
-
-    # Image size
-    gs = max(int(model.stride.max()), 32)  # grid size (max stride)
-    imgsz = check_img_size(opt.imgsz, gs, floor=gs * 2)  # verify imgsz is gs-multiple
 
     # Batch size
     if RANK == -1 and batch_size == -1:  # single-GPU only, estimate best batch size
@@ -546,13 +552,13 @@ def train(hyp, opt, device, callbacks):
 def parse_opt(known=False):
     """Parses command-line arguments for YOLOv5 training, validation, and testing."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--weights", type=str, default=ROOT / "yolov5s.pt", help="initial weights path")
-    parser.add_argument("--cfg", type=str, default="", help="model.yaml path")
-    parser.add_argument("--data", type=str, default=ROOT / "data/coco128.yaml", help="dataset.yaml path")
-    parser.add_argument("--hyp", type=str, default=ROOT / "data/hyps/hyp.scratch-low.yaml", help="hyperparameters path")
-    parser.add_argument("--epochs", type=int, default=100, help="total training epochs")
-    parser.add_argument("--batch-size", type=int, default=16, help="total batch size for all GPUs, -1 for autobatch")
-    parser.add_argument("--imgsz", "--img", "--img-size", type=int, default=640, help="train, val image size (pixels)")
+    parser.add_argument('--weights', type=str, default='weights/yolov5s.pt', help='initial weights path')
+    parser.add_argument('--cfg', type=str, default='models/yolov5s.yaml', help='model.yaml path')
+    parser.add_argument('--data', type=str, default='datasets/coco128//coco.yaml', help='dataset.yaml path')
+    parser.add_argument('--hyp', type=str, default='data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
+    parser.add_argument("--epochs", type=int, default=600, help="total training epochs")
+    parser.add_argument('--batch-size', type=int, default=32, help='total batch size for all GPUs')
+    parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)')
     parser.add_argument("--rect", action="store_true", help="rectangular training")
     parser.add_argument("--resume", nargs="?", const=True, default=False, help="resume most recent training")
     parser.add_argument("--nosave", action="store_true", help="only save final checkpoint")
@@ -565,19 +571,19 @@ def parse_opt(known=False):
     parser.add_argument("--bucket", type=str, default="", help="gsutil bucket")
     parser.add_argument("--cache", type=str, nargs="?", const="ram", help="image --cache ram/disk")
     parser.add_argument("--image-weights", action="store_true", help="use weighted image selection for training")
-    parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
+    parser.add_argument("--device", default="0", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
     parser.add_argument("--multi-scale", action="store_true", help="vary img-size +/- 50%%")
     parser.add_argument("--single-cls", action="store_true", help="train multi-class data as single-class")
     parser.add_argument("--optimizer", type=str, choices=["SGD", "Adam", "AdamW"], default="SGD", help="optimizer")
     parser.add_argument("--sync-bn", action="store_true", help="use SyncBatchNorm, only available in DDP mode")
     parser.add_argument("--workers", type=int, default=8, help="max dataloader workers (per RANK in DDP mode)")
-    parser.add_argument("--project", default=ROOT / "runs/train", help="save to project/name")
+    parser.add_argument("--project", default=ROOT / "runs/train/prune", help="save to project/name")
     parser.add_argument("--name", default="exp", help="save to project/name")
     parser.add_argument("--exist-ok", action="store_true", help="existing project/name ok, do not increment")
     parser.add_argument("--quad", action="store_true", help="quad dataloader")
     parser.add_argument("--cos-lr", action="store_true", help="cosine LR scheduler")
     parser.add_argument("--label-smoothing", type=float, default=0.0, help="Label smoothing epsilon")
-    parser.add_argument("--patience", type=int, default=0, help="EarlyStopping patience (epochs without improvement)")
+    parser.add_argument("--patience", type=int, default=200, help="EarlyStopping patience (epochs without improvement)")
     parser.add_argument("--freeze", nargs="+", type=int, default=[0], help="Freeze layers: backbone=10, first3=0 1 2")
     parser.add_argument("--save-period", type=int, default=-1, help="Save checkpoint every x epochs (disabled if < 1)")
     parser.add_argument("--seed", type=int, default=0, help="Global training seed")
@@ -585,7 +591,7 @@ def parse_opt(known=False):
     # Prune
     parser.add_argument("--prune", nargs="?", const=True, default=True, help="prune the model")
     parser.add_argument('--target-prune-rate', default=0.5, type=float, help='Target pruning rate')
-    parser.add_argument('--iterative-steps', default=1, type=int, help='prune steps')
+    parser.add_argument('--iterative-steps', default=1, type=int, help='Total pruning iteration step')
 
     # Logger arguments
     parser.add_argument("--entity", default=None, help="Entity")

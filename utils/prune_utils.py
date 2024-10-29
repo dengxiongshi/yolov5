@@ -1,5 +1,5 @@
 from models.yolo_prune import Detect
-from models.common import *
+from models.common_prune import *
 from models.experimental import *
 from utils.general import make_divisible
 
@@ -28,7 +28,7 @@ def parse_module_defs(d):
             if i > 0:
                 from_to_map[named_m_bn] = fromlayer[f]
             fromlayer.append(named_m_bn)
-        elif m is C3_prune:
+        elif m is C3:
             named_m_cv1_bn = named_m_base + ".cv1.bn"
             named_m_cv2_bn = named_m_base + ".cv2.bn"
             named_m_cv3_bn = named_m_base + ".cv3.bn"
@@ -55,7 +55,7 @@ def parse_module_defs(d):
             named_m_bn = named_m_base + '.conv.bn'
             CBL_idx.append(named_m_bn)
             fromlayer.append(named_m_bn)
-        elif m is SPP_prune:
+        elif m is SPP:
             named_m_cv1_bn = named_m_base + '.cv1.bn'
             named_m_cv2_bn = named_m_base + '.cv2.bn'
             CBL_idx.append(named_m_cv1_bn)
@@ -63,7 +63,7 @@ def parse_module_defs(d):
             from_to_map[named_m_cv1_bn] = fromlayer[f]
             from_to_map[named_m_cv2_bn] = [named_m_cv1_bn] * 4
             fromlayer.append(named_m_cv2_bn)
-        elif m is SPPF_prune:
+        elif m is SPPF:
             named_m_cv1_bn = named_m_base + '.cv1.bn'
             named_m_cv2_bn = named_m_base + '.cv2.bn'
             CBL_idx.append(named_m_cv1_bn)
@@ -222,7 +222,7 @@ def update_yaml_loop(d, name, maskconvdict):
             named_m_conv = named_m_base + '.conv.conv'
             if name == named_m_conv:
                 args[-1] = maskconvdict[named_m_conv].sum().item() / c2
-        elif m is SPP_prune or m is SPPF_prune:
+        elif m is SPP or m is SPPF:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 if isinstance(args[-1], float):
@@ -231,7 +231,7 @@ def update_yaml_loop(d, name, maskconvdict):
             named_m_cv1_conv = named_m_base + '.cv1.conv'
             if name == named_m_cv1_conv:
                 args[-1] = 0.5 * maskconvdict[named_m_cv1_conv].sum().item() / c2
-        elif m is C3_prune:
+        elif m is C3:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2_ = make_divisible(c2 * gw, 8)
@@ -294,3 +294,17 @@ def gather_bn_weights(model, ignore_idx):
         index = index + size
 
     return bn_weights
+
+
+def obtain_bn_mask(bn_module, thre):
+
+    thre = thre.cuda()
+    mask = bn_module.weight.data.abs().ge(thre).float()
+
+    return mask
+
+
+def obtain_conv_mask(conv_module, thre):
+    thre = thre.cuda()
+    mask = conv_module.weight.data.abs().sum(dim=1).sum(dim=1).sum(dim=1).ge(thre).float()
+    return mask

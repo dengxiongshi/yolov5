@@ -22,6 +22,10 @@ from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+
 import torch
 import torch.distributed as dist
 import torch.hub as hub
@@ -140,17 +144,20 @@ def train(opt, device):
 
     # Model
     with torch_distributed_zero_first(LOCAL_RANK), WorkingDirectory(ROOT):
-        if Path(opt.model).is_file() or opt.model.endswith(".pt"):
-            model = attempt_load(opt.model, device="cpu", fuse=False)
-        elif opt.model in torchvision.models.__dict__:  # TorchVision models i.e. resnet50, efficientnet_b0
-            model = torchvision.models.__dict__[opt.model](weights="IMAGENET1K_V1" if pretrained else None)
+        if opt.cfg is not None:
+            model = ClassificationModel(cfg=opt.cfg, nc=nc)
         else:
-            m = hub.list("ultralytics/yolov5")  # + hub.list('pytorch/vision')  # models
-            raise ModuleNotFoundError(f"--model {opt.model} not found. Available models are: \n" + "\n".join(m))
-        if isinstance(model, DetectionModel):
-            LOGGER.warning("WARNING ⚠️ pass YOLOv5 classifier model with '-cls' suffix, i.e. '--model yolov5s-cls.pt'")
-            model = ClassificationModel(model=model, nc=nc, cutoff=opt.cutoff or 10)  # convert to classification model
-        reshape_classifier_output(model, nc)  # update class count
+            if Path(opt.model).is_file() or opt.model.endswith(".pt"):
+                model = attempt_load(opt.model, device="cpu", fuse=False)
+            elif opt.model in torchvision.models.__dict__:  # TorchVision models i.e. resnet50, efficientnet_b0
+                model = torchvision.models.__dict__[opt.model](weights="IMAGENET1K_V1" if pretrained else None)
+            else:
+                m = hub.list("ultralytics/yolov5")  # + hub.list('pytorch/vision')  # models
+                raise ModuleNotFoundError(f"--model {opt.model} not found. Available models are: \n" + "\n".join(m))
+            if isinstance(model, DetectionModel):
+                LOGGER.warning("WARNING ⚠️ pass YOLOv5 classifier model with '-cls' suffix, i.e. '--model yolov5s-cls.pt'")
+                model = ClassificationModel(model=model, nc=nc, cutoff=opt.cutoff or 10)  # convert to classification model
+            reshape_classifier_output(model, nc)  # update class count
     for m in model.modules():
         if not pretrained and hasattr(m, "reset_parameters"):
             m.reset_parameters()
@@ -313,6 +320,7 @@ def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, default="yolov5s-cls.pt", help="initial weights path")
     parser.add_argument("--data", type=str, default="imagenette160", help="cifar10, cifar100, mnist, imagenet, ...")
+    parser.add_argument('--cfg', type=str, default=None, help='build model by yaml')
     parser.add_argument("--epochs", type=int, default=10, help="total training epochs")
     parser.add_argument("--batch-size", type=int, default=64, help="total batch size for all GPUs")
     parser.add_argument("--imgsz", "--img", "--img-size", type=int, default=224, help="train, val image size (pixels)")
@@ -324,7 +332,7 @@ def parse_opt(known=False):
     parser.add_argument("--name", default="exp", help="save to project/name")
     parser.add_argument("--exist-ok", action="store_true", help="existing project/name ok, do not increment")
     parser.add_argument("--pretrained", nargs="?", const=True, default=True, help="start from i.e. --pretrained False")
-    parser.add_argument("--optimizer", choices=["SGD", "Adam", "AdamW", "RMSProp"], default="Adam", help="optimizer")
+    parser.add_argument("--optimizer", choices=["SGD", "Adam", "AdamW", "RMSProp"], default="SGD", help="optimizer")
     parser.add_argument("--lr0", type=float, default=0.001, help="initial learning rate")
     parser.add_argument("--decay", type=float, default=5e-5, help="weight decay")
     parser.add_argument("--label-smoothing", type=float, default=0.1, help="Label smoothing epsilon")

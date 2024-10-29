@@ -26,8 +26,8 @@ def convert_video_to_images(input_video, output_directory, output_format='jpg', 
 
 
 # ffmpegPath = r"E:\soft\ffmpeg\bin\ffmpeg"
-src_video = r"E:\downloads\compress\datasets\天气\video\thunder"
-save_dir = r"E:\downloads\compress\datasets\天气\video\thunder\images"
+src_video = r"D:\python_work\ImageFusion\ImageRegistration\video"
+save_dir = r"D:\python_work\ImageFusion\ImageRegistration\video"
 videoFormat = '.mp4'
 # out_path = r"E:\downloads\program\video_download\hand_hold_camera\logo\huawei mobile"
 # pic = out_path
@@ -39,7 +39,7 @@ video_list = glob.glob(src_video + '/*.mp4')
 
 pbar = tqdm(video_list, desc=f"Converting {src_video}")
 
-time = 'thunder20240614'
+time = '20240827'
 
 i = 0
 for p in pbar:

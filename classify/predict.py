@@ -154,7 +154,27 @@ def run(
             s += f"{', '.join(f'{names[j]} {prob[j]:.2f}' for j in top5i)}, "
 
             # Write results
-            text = "\n".join(f"{prob[j]:.2f} {names[j]}" for j in top5i)
+            # text = "\n".join(f"{prob[j]:.2f} {names[j]}" for j in top5i)
+            # 进行规则后处理
+            text = ''
+            conf = 0.25
+            if prob[top5i[0]] > 0.75:
+                text += "\n".join([f"{prob[top5i[0]]:.2f} {names[top5i[0]]}"])
+            elif prob[0] > conf and prob[2] > conf:  # 同时有雨和雾
+                text += "\n".join([f"{prob[0]:.2f} {names[0]}", f"{prob[2]:.2f} {names[2]}"])
+            elif prob[3] > conf and prob[2] > conf:  # 同时有雨和打雷
+                text += "\n".join([f"{prob[3]:.2f} {names[0]}", f"{prob[2]:.2f} {names[2]}"])
+            elif prob[3] > conf and prob[0] > conf:  # 打雷，下雨误判为雾
+                text += "\n".join([f"{prob[3]:.2f} {names[0]}", f"{prob[0]:.2f} {names[2]}"])
+            elif prob[2] > conf and prob[1] > conf:  # 同时有雨和其它
+                text += "\n".join([f"{prob[2]:.2f} {names[2]}"])
+            elif prob[0] > conf and prob[1] > conf:  # 同时有雾和其它
+                text += "\n".join([f"{prob[0]:.2f} {names[0]}"])
+            elif prob[0] > conf and prob[1] > conf:  # 同时打雷和其它
+                text += "\n".join([f"{prob[3]:.2f} {names[3]}"])
+            else:
+                text += "\n".join([f"{prob[1]:.2f} {names[1]}"])
+
             if save_img or view_img:  # Add bbox to image
                 annotator.text([32, 32], text, txt_color=(255, 255, 255))
             if save_txt:  # Write to file
@@ -206,7 +226,7 @@ def run(
 def parse_opt():
     """Parses command line arguments for YOLOv5 inference settings including model, source, device, and image size."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--weights", nargs="+", type=str, default=ROOT / "yolov5s-cls.pt", help="model path(s)")
+    parser.add_argument("--weights", nargs="+", type=str, default=ROOT / "weights/yolov5s-cls.pt", help="model path(s)")
     parser.add_argument("--source", type=str, default=ROOT / "data/images", help="file/dir/URL/glob/screen/0(webcam)")
     parser.add_argument("--data", type=str, default=ROOT / "data/coco128.yaml", help="(optional) dataset.yaml path")
     parser.add_argument("--imgsz", "--img", "--img-size", nargs="+", type=int, default=[224], help="inference size h,w")

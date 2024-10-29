@@ -493,7 +493,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', type=str, default=ROOT / 'weights/yolov5s.pt', help='initial weights path')
-    parser.add_argument('--cfg', type=str, default=ROOT / 'models/yolov5s_xsmall_autoanchor_conv_half.yaml', help='model.yaml path')
+    parser.add_argument('--cfg', type=str, default=ROOT / 'models/yolov5s-pruning.yaml', help='model.yaml path')
     parser.add_argument('--data', type=str, default=ROOT / 'datasets/coco128/coco.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
     parser.add_argument('--epochs', type=int, default=600, help='total training epochs')
@@ -521,7 +521,7 @@ def parse_opt(known=False):
     parser.add_argument('--quad', action='store_true', help='quad dataloader')
     parser.add_argument('--cos-lr', action='store_true', help='cosine LR scheduler')
     parser.add_argument('--label-smoothing', type=float, default=0.0, help='Label smoothing epsilon')
-    parser.add_argument('--patience', type=int, default=0, help='EarlyStopping patience (epochs without improvement), 0 is disable EarlyStopping')
+    parser.add_argument('--patience', type=int, default=100, help='EarlyStopping patience (epochs without improvement), 0 is disable EarlyStopping')
     parser.add_argument('--freeze', nargs='+', type=int, default=[0], help='Freeze layers: backbone=10, first3=0 1 2')
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')

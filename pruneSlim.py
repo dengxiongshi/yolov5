@@ -59,8 +59,8 @@ def prune_and_eval(model, ignore_idx, opt):
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', type=str, default="runs/train/slim/yolov5s_512/weights/best.pt", help='initial weights path')
-    parser.add_argument('--cfg', type=str, default='models/pruneModels/yolov5s_512.yaml', help='model.yaml')
+    parser.add_argument('--weights', type=str, default="runs/train/slim/boat_person_car_yolov5s-pruning_20240916/weights/best.pt", help='initial weights path')
+    parser.add_argument('--cfg', type=str, default='models/prunModels/yolov5s-pruning.yaml', help='model.yaml')
     parser.add_argument('--data', type=str, default='datasets/coco128/coco.yaml', help='data.yaml path')
     parser.add_argument('--single-cls', action='store_true', help='train multi-class data as single-class')
     parser.add_argument('--hyp', type=str, default='data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
@@ -68,7 +68,7 @@ def parse_opt():
     parser.add_argument('--batch-size', type=int, default=32, help='total batch size for all GPUs')
     parser.add_argument('--img-size', nargs='+', type=int, default=[640, 640], help='[train, test] image sizes')
     parser.add_argument('--workers', type=int, default=8, help='maximum number of dataloader workers')
-    parser.add_argument('--path', type=str, default='models/pruneModels/yolov5s_512_pruned.yaml',
+    parser.add_argument('--path', type=str, default='models/pruneModels/yolov5s-pruned_test.yaml',
                         help='the path to save pruned yaml')
 
     parser.add_argument('--global_percent', type=float, default=0.6, help='global channel prune percent')
@@ -88,9 +88,11 @@ if __name__ == '__main__':
 
     with open(opt.hyp) as f:
         hyp = yaml.load(f, Loader=yaml.SafeLoader)  # load hyps
-
+    
+    data_dict = check_dataset(opt.data)
+    nc = 1 if opt.single_cls else int(data_dict["nc"])  # number of classes
     # Create model
-    model = Model(opt.cfg).to(device)
+    model = Model(opt.cfg, nc=nc, anchors=hyp.get("anchors")).to(device)
     ckpt = torch.load(opt.weights, map_location=device)
     exclude = []  # exclude keys
     state_dict = ckpt['model'].float().state_dict()  # to FP32
