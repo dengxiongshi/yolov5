@@ -75,7 +75,7 @@ def parse_module_defs(d):
             inputtmp = [fromlayer[x] for x in f]
             fromlayer.append(inputtmp)
         elif m is Detect:
-            for j in range(3):
+            for j in range(len(f)):
                 ignore_idx.append(named_m_base + ".m.{}".format(j))
                 from_to_map[named_m_base + ".m.{}".format(j)] = fromlayer[f[j]]
         else:

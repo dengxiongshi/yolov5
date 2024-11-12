@@ -91,9 +91,11 @@ def smart_DDP(model):
         "Please upgrade or downgrade torch to use DDP. See https://github.com/ultralytics/yolov5/issues/8395"
     )
     if check_version(torch.__version__, "1.11.0"):
-        return DDP(model, device_ids=[LOCAL_RANK], output_device=LOCAL_RANK, static_graph=True)
+        return DDP(model, device_ids=[LOCAL_RANK], output_device=LOCAL_RANK, static_graph=True,
+                   find_unused_parameters=any(isinstance(layer, nn.MultiheadAttention) for layer in model.modules()))  # <--- due to multihead attn
     else:
-        return DDP(model, device_ids=[LOCAL_RANK], output_device=LOCAL_RANK)
+        return DDP(model, device_ids=[LOCAL_RANK], output_device=LOCAL_RANK,
+                   find_unused_parameters=any(isinstance(layer, nn.MultiheadAttention) for layer in model.modules())) # <--- due to multihead attn)
 
 
 def reshape_classifier_output(model, n=1000):

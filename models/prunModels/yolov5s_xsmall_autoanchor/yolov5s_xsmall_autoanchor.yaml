@@ -6,10 +6,10 @@ depth_multiple: 0.33  # model depth multiple
 width_multiple: 0.50  # layer channel multiple
 #activation: nn.SiLU()
 anchors: 3
-  - [9,12, 14,17, 21,26]  #P2/4
-  - [32,41, 50,64, 47,137]  # P3/8
-  - [89,123, 114,218, 140,336]  # P4/16
-  - [217,292, 501,319, 338,488]  # P5/32
+#  - [9,12, 14,17, 21,26]  #P2/4
+#  - [32,41, 50,64, 47,137]  # P3/8
+#  - [89,123, 114,218, 140,336]  # P4/16
+#  - [217,292, 501,319, 338,488]  # P5/32
 
 # YOLOv5 v6.0 backbone
 backbone:
