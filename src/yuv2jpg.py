@@ -90,11 +90,12 @@ def ffmpeg_yuv2jpg(yuv_path, save_path, target_size):
 
 
 
-img_dir = r"C:\Users\dengxs\Desktop\dengxs\20241012\vi"
+img_dir = r"C:\Users\dengxs\Desktop\dengxs\20241119\ir"
 
 save_dir = img_dir
 
-h, w = 1080, 1920
+h = 512
+w = 640
 target_size = (h, w)
 
 if not os.path.exists(save_dir):
@@ -110,21 +111,21 @@ for p in pbar:
     name = os.path.splitext(img_name)[0]
 
     save_name = os.path.join(save_dir, name + ".jpg")
-    # yuv = np.fromfile(p, dtype=np.uint8)
-    # data = yuv.reshape((int(h + h / 2), w))
-    #
-    # bgr = cv2.cvtColor(data, cv2.COLOR_YUV420SP2BGR)
+    yuv = np.fromfile(p, dtype=np.uint8)
+    data = yuv.reshape((int(h + h / 2), w))
 
-    # yuv_image = cv2.imread(p, cv2.IMREAD_UNCHANGED)
+    bgr = cv2.cvtColor(data, cv2.COLOR_YUV420SP2BGR)
+
+    # yuv_image = cv2.imread(p)
     # bgr_image = cv2.cvtColor(yuv_image, cv2.COLOR_YUV420SP2BGR)
 
     # res = yuv420sp2bgr(data, target_size)
     # pic = cv2.merge(res) * 255
     # pic = cv2.cvtColor(pic, cv2.COLOR_BGR2RGB)
 
-    # cv2.imwrite(save_name, bgr)
+    cv2.imwrite(save_name, bgr)
 
-    ffmpeg_yuv2jpg(p, save_name, target_size)
+    # ffmpeg_yuv2jpg(p, save_name, target_size)
 
 
 

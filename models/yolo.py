@@ -1051,7 +1051,11 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     is_backbone = False
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
-        m = eval(m) if isinstance(m, str) else m  # eval strings
+        try:
+            t = m
+            m = eval(m) if isinstance(m, str) else m  # eval strings
+        except:
+            pass
         for j, a in enumerate(args):
             with contextlib.suppress(NameError):
                 args[j] = eval(a) if isinstance(a, str) else a  # eval strings
@@ -1059,11 +1063,11 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
         if m in {
             Classify, Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, DownConv, MixConv2d, Focus,
-            CrossConv, RepConv, SPPCSPC, ShuffleV2Block,
+            CrossConv, RepConv, SPPCSPC, ShuffleV2Block, Conv_maxpool, ShuffleNetV2_InvertedResidual,
             BottleneckCSP, C3, C3_Faster, C3TR, C3STR, C3SPP, C3Ghost, ODConv_3rd, ConvNextBlock, StemBlock,
             nn.ConvTranspose2d, DWConvTranspose2d, DWContrans2d, C3x, C2f, DenseBlock, PyConv4, CSPStage,
             RepVGGBlock, SEBlock, GSConv, VoVGSCSP, VoVGSCSPC, conv_bn_hswish, MobileNetV3_InvertedResidual,
-            mobilev3_bneck, C3_UIB, C2PSA, C2f, C3k2
+            mobilev3_bneck, C3_UIB, C2PSA, C2f, C3k2, stem, MBConvBlock, DepthSepConv
         }:
             c1, c2 = ch[f], args[0]
             if c2 != nc:  # if c2 not equal to number of classes (i.e. for Classify() output)
@@ -1152,9 +1156,9 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         if i == 0:
             ch = []
         if isinstance(c2, list):
-            ch.append(c2)
+            ch.extend(c2)
             for _ in range(5 - len(ch)):
-                ch.insert(8, 8)
+                ch.insert(0, 0)
         else:
             ch.append(c2)
     return nn.Sequential(*layers), sorted(save)

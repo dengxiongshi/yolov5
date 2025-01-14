@@ -135,18 +135,24 @@ def makexml(picPath, txtPath, xmlPath, dic):  # txt所在文件夹路径，xml�
 
 
 if __name__ == "__main__":
-    picPath = r"E:\downloads\compress\datasets\fire_smoke\fire-8\images"  # 图片所在文件夹路径，后面的/一定要带上
-    txtPath = r"E:\downloads\compress\datasets\fire_smoke\fire-8\labels"  # txt所在文件夹路径，后面的/一定要带上
-    xmlPath = r"E:\downloads\compress\datasets\fire_smoke\fire-8\Annotations"  # xml文件保存路径，后面的/一定要带上
+    picPath = r"E:\downloads\compress\datasets\VisDrone2019\train_data\images\val"  # 图片所在文件夹路径，后面的/一定要带上
+    txtPath = r"E:\downloads\compress\datasets\VisDrone2019\train_data\labels_no_small\val"  # txt所在文件夹路径，后面的/一定要带上
+    xmlPath = r"E:\downloads\compress\datasets\VisDrone2019\train_data\labels_no_small\Annotations"  # xml文件保存路径，后面的/一定要带上
+
+    dic = {
+        "0": "face",
+        "1": "person",
+        "2": "car"
+    }
 
     # dic = {
     #     "0": "single",
     #     "1": "double"
     # }
-    dic = {
-        "0": "fire",
-        "1": "smoke"
-    }
+    # dic = {
+    #     "0": "fire",
+    #     "1": "smoke"
+    # }
     # dic = {
     #     "0": "car",
     #     "1": "person",

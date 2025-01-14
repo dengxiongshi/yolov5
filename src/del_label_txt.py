@@ -12,18 +12,21 @@ def change_label(source_file, destination_file):
         parts = line.split()
         if len(parts) > 0:
             number = int(parts[0])
-            if number in [3, 4, 10]:
+            if number in [1, 2, 3, 4]:
                 # if float(parts[3]) > 0.010 and float(parts[4]) > 0.0190:
                 modified_lines.append(' '.join(parts))
+            # else:
+            #     print(source_file)
+            #     break
 
     labels = []
     for line in modified_lines:
         parts = line.split()
         if len(parts) > 0:
             number = int(parts[0])
-            if number == 4:
-                parts[0] = '2'
-            elif number == 10:
+            if number == 1:
+                parts[0] = '0'
+            else:
                 parts[0] = '1'
             # van变成truck
             # elif number == 4:
@@ -35,13 +38,13 @@ def change_label(source_file, destination_file):
 
             labels.append(' '.join(parts))
 
-    with open(destination_file, 'a') as destination:
+    with open(destination_file, 'w') as destination:
         destination.write('\n'.join(labels))
 
 
 if __name__ == "__main__":
-    src_label = r"F:\datasets\ExDark_coco_yolo\labels"
-    save_label = r"F:\datasets\ExDark_coco_yolo\labels_final"
+    src_label = r"\\10.10.10.8\determined\alluxio\public\dengxiongshi\datasets\person_car\20250110\labels\train_ori"
+    save_label = r"\\10.10.10.8\determined\alluxio\public\dengxiongshi\datasets\person_car\20250110\labels\train"
 
     if os.path.exists(save_label) == False:
         os.makedirs(save_label)

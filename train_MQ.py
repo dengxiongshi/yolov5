@@ -25,8 +25,12 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from mqbench.convert_deploy import convert_onnx, convert_deploy
+from mqbench.prepare_by_platform import BackendType, prepare_by_platform
+from mqbench.utils.state import enable_calibration, enable_quantization
+
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 try:
     import comet_ml  # must be imported before torch (if installed)
@@ -94,7 +98,7 @@ from utils.torch_utils import (
     smart_DDP,
     smart_optimizer,
     smart_resume,
-    torch_distributed_zero_first,
+    torch_distributed_zero_first, choose_backend,
 )
 
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", -1))  # https://pytorch.org/docs/stable/elastic/run.html
@@ -198,6 +202,7 @@ def train(hyp, opt, device, callbacks):
     else:
         model = Model(cfg, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)  # create
     amp = check_amp(model)  # check AMP
+    amp = False
 
     # Freeze
     freeze = [f"model.{x}." for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # layers to freeze
@@ -334,6 +339,53 @@ def train(hyp, opt, device, callbacks):
         f"Logging results to {colorstr('bold', save_dir)}\n"
         f'Starting training for {epochs} epochs...'
     )
+
+    model_name = opt.cfg.split('/')[-1].split('.')[0]
+    output_dir = os.path.join(opt.output_path, model_name)
+    os.system('rm -rf {};mkdir -p {}'.format(output_dir, output_dir))
+    if opt.pre_eval_and_export:
+        import copy
+        print('原始onnx模型精度')
+        results, maps, _ = validate.run(data_dict,
+                                   batch_size=batch_size // WORLD_SIZE * 2,
+                                   imgsz=imgsz,
+                                   half=amp,
+                                   model=ema.ema,
+                                   single_cls=single_cls,
+                                   dataloader=val_loader,
+                                   save_dir=save_dir,
+                                   plots=False,
+                                   callbacks=callbacks,
+                                   compute_loss=compute_loss)
+        kwargs = {
+            'input_shape_dict': {'data': [1, 3, opt.imgsz, opt.imgsz]},
+            'output_path': output_dir,
+            'model_name': model_name,
+            'dummy_input': None,
+            'onnx_model_path': os.path.join(output_dir, '{}_ori.onnx'.format(model_name)),
+        }
+        module_tmp = copy.deepcopy(model)
+        module_tmp = module_tmp.cpu()
+        convert_onnx(module_tmp.eval(), **kwargs)
+        del module_tmp
+        model = model.train()  # prepare前一定要是train模式！！
+
+    backend = choose_backend(opt)
+    if opt.quantize:
+        prepare_custom_config_dict = {
+            'extra_qconfig_dict': {'w_fakequantize': 'PACTFakeQuantize'},
+            'concrete_args': {'augment': False, 'profile': False, 'visualize': False}
+        }
+
+        # print('named_modules:', dict(model.named_modules())[''])
+        model.train()
+        model = model.to(device)
+        model = prepare_by_platform(model, backend, prepare_custom_config_dict)
+        # print('prepared module:', model)
+        enable_calibration(model)
+        calibration_flag = True
+        model = model.to(device)
+
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         callbacks.run("on_train_epoch_start")
         model.train()
@@ -355,8 +407,14 @@ def train(hyp, opt, device, callbacks):
         LOGGER.info(("\n" + "%11s" * 7) % ("Epoch", "GPU_mem", "box_loss", "obj_loss", "cls_loss", "Instances", "Size"))
         if RANK in {-1, 0}:
             pbar = tqdm(pbar, total=nb, bar_format=TQDM_BAR_FORMAT)  # progress bar
+
+        sample_size = nb // 1000
+        print('sample_size:', sample_size)
+
         optimizer.zero_grad()
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
+            if opt.fast_test and i % sample_size != 0:
+                continue
             callbacks.run("on_train_batch_start")
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255  # uint8 to float32, 0-255 to 0.0-1.0
@@ -388,6 +446,17 @@ def train(hyp, opt, device, callbacks):
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
                 if opt.quad:
                     loss *= 4.0
+
+            if opt.quantize:
+                if calibration_flag:
+                    if i >= 50:
+                        calibration_flag = False
+                        model.zero_grad()
+                        enable_quantization(model)
+                        print('close calibration')
+                    else:
+                        print('calibration iter{}'.format(i))
+                        continue
 
             # Backward
             scaler.scale(loss).backward()
@@ -480,6 +549,18 @@ def train(hyp, opt, device, callbacks):
         if stop:
             break  # must break all DDP ranks
 
+        if opt.quantize:
+            print(f'epoch{epoch} convert_deploy')
+            model_name = opt.cfg.split('/')[-1].split('.')[0]
+            output_dir = os.path.join(opt.output_path, model_name)
+            output_dir = os.path.join(output_dir, str(epoch))
+            output_dir = os.path.join(output_dir, model_name)
+            os.system('mkdir -p {}'.format(output_dir))
+            model2 = deepcopy(model)
+            convert_deploy(model2.eval(), backend, input_shape_dict={'data': [1, 3, opt.imgsz, opt.imgsz]},
+                model_name='{}_mqmoble'.format(model_name), output_path=output_dir)
+            del model2
+
         # end epoch ----------------------------------------------------------------------------------------------------
     # end training -----------------------------------------------------------------------------------------------------
     if RANK in {-1, 0}:
@@ -509,6 +590,13 @@ def train(hyp, opt, device, callbacks):
 
         callbacks.run("on_train_end", last, best, epoch, results)
 
+    if opt.quantize:
+        model_name = opt.cfg.split('/')[-1].split('.')[0]
+        output_dir = os.path.join(opt.output_path, model_name)
+        os.system('mkdir -p {}'.format(output_dir))
+        convert_deploy(model.eval(), backend, input_shape_dict={'data': [1, 3, opt.imgsz, opt.imgsz]},
+            model_name='{}_mqmoble'.format(model_name), output_path=output_dir)
+
     torch.cuda.empty_cache()
     return results
 
@@ -517,11 +605,11 @@ def parse_opt(known=False):
     """Parses command-line arguments for YOLOv5 training, validation, and testing."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--weights", type=str, default=ROOT / "weights/yolov5s.pt", help="initial weights path")
-    parser.add_argument("--cfg", type=str, default="", help="model.yaml path")
-    parser.add_argument("--data", type=str, default=ROOT / "data/coco128.yaml", help="dataset.yaml path")
+    parser.add_argument("--cfg", type=str, default=ROOT / "models/small_object/yolov5s_xsmall_autoanchor.yaml", help="model.yaml path")
+    parser.add_argument("--data", type=str, default="/determined/alluxio/public/dengxiongshi/datasets/VisDrone2019/train_data_20241105/person_car.yaml", help="dataset.yaml path")
     parser.add_argument("--hyp", type=str, default=ROOT / "data/hyps/hyp.scratch-low.yaml", help="hyperparameters path")
-    parser.add_argument("--epochs", type=int, default=100, help="total training epochs")
-    parser.add_argument("--batch-size", type=int, default=16, help="total batch size for all GPUs, -1 for autobatch")
+    parser.add_argument("--epochs", type=int, default=10, help="total training epochs")
+    parser.add_argument("--batch-size", type=int, default=128, help="total batch size for all GPUs, -1 for autobatch")
     parser.add_argument("--imgsz", "--img", "--img-size", type=int, default=640, help="train, val image size (pixels)")
     parser.add_argument("--rect", action="store_true", help="rectangular training")
     parser.add_argument("--resume", nargs="?", const=True, default=False, help="resume most recent training")
@@ -535,14 +623,14 @@ def parse_opt(known=False):
     parser.add_argument("--bucket", type=str, default="", help="gsutil bucket")
     parser.add_argument("--cache", type=str, nargs="?", const="ram", help="image --cache ram/disk")
     parser.add_argument("--image-weights", action="store_true", help="use weighted image selection for training")
-    parser.add_argument("--device", default="0", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
+    parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
     parser.add_argument("--multi-scale", action="store_true", help="vary img-size +/- 50%%")
     parser.add_argument("--single-cls", action="store_true", help="train multi-class data as single-class")
     parser.add_argument("--optimizer", type=str, choices=["SGD", "Adam", "AdamW"], default="SGD", help="optimizer")
     parser.add_argument("--sync-bn", action="store_true", help="use SyncBatchNorm, only available in DDP mode")
     parser.add_argument("--workers", type=int, default=8, help="max dataloader workers (per RANK in DDP mode)")
-    parser.add_argument("--project", default=ROOT / "runs/train", help="save to project/name")
-    parser.add_argument("--name", default="exp", help="save to project/name")
+    parser.add_argument("--project", default=ROOT / "runs/train/MQ", help="save to project/name")
+    parser.add_argument("--name", default="yolov5s_xsmall_autoanchor_MQ_20241112", help="save to project/name")
     parser.add_argument("--exist-ok", action="store_true", help="existing project/name ok, do not increment")
     parser.add_argument("--quad", action="store_true", help="quad dataloader")
     parser.add_argument("--cos-lr", action="store_true", help="cosine LR scheduler")
@@ -552,6 +640,13 @@ def parse_opt(known=False):
     parser.add_argument("--save-period", type=int, default=-1, help="Save checkpoint every x epochs (disabled if < 1)")
     parser.add_argument("--seed", type=int, default=0, help="Global training seed")
     parser.add_argument("--local_rank", type=int, default=-1, help="Automatic DDP Multi-GPU argument, do not modify")
+
+    # MQ
+    parser.add_argument('--output_path', type=str, default='./', help='output path')
+    parser.add_argument('--quantize', nargs="?", const=True, default=True, help='quantize')
+    parser.add_argument('--BackendType', type=str, default='NNIE', help='backend for QAT deployment')
+    parser.add_argument('--pre_eval_and_export', action='store_true', help='pre_eval_and_export')
+    parser.add_argument('--fast_test', action='store_true', help='fast_test')
 
     # Logger arguments
     parser.add_argument("--entity", default=None, help="Entity")

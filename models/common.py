@@ -1270,27 +1270,33 @@ class GhostConv(nn.Module):
     def __init__(self, c1, c2, k=1, s=1, g=1, act=True):  # ch_in, ch_out, kernel, stride, groups
         super().__init__()
         c_ = c2 // 2  # hidden channels
-        self.cv1 = Conv(c1, c_, k, s, None, g, act=act)
-        self.cv2 = Conv(c_, c_, 5, 1, None, c_, act=act)
+        self.primary_conv = Conv(c1, c_, k=1, s=1, act=act)
+        self.cheap_operation = Conv(c_, c_, k=3, s=1, p=1, g=c_, act=act)
 
     def forward(self, x):
-        y = self.cv1(x)
-        return torch.cat((y, self.cv2(y)), 1)
+        y = self.primary_conv(x)
+        return torch.cat([y, self.cheap_operation(y)], 1)
 
 
 class GhostBottleneck(nn.Module):
     # Ghost Bottleneck https://github.com/huawei-noah/ghostnet
-    def __init__(self, c1, c2, k=3, s=1):  # ch_in, ch_out, kernel, stride
+    def __init__(self, c1, c2, midc, k=5, s=1, use_se = False):  # ch_in, ch_mid, ch_out, kernel, stride, use_se
         super().__init__()
-        c_ = c2 // 2
-        self.conv = nn.Sequential(
-            GhostConv(c1, c_, 1, 1),  # pw
-            DWConv(c_, c_, k, s, act=False) if s == 2 else nn.Identity(),  # dw
-            GhostConv(c_, c2, 1, 1, act=False))  # pw-linear
-        self.shortcut = nn.Sequential(DWConv(c1, c1, k, s, act=False), Conv(c1, c2, 1, 1,
-                                                                            act=False)) if s == 2 else nn.Identity()
+        assert s in [1, 2]
+        c_ = midc
+        self.conv = nn.Sequential(GhostConv(c1, c_, 1, 1),              # Expansion
+                                  Conv(c_, c_, 3, s=2, p=1, g=c_, act=False) if s == 2 else nn.Identity(),  # dw
+                                  # Squeeze-and-Excite
+                                  SeBlock(c_) if use_se else nn.Sequential(),
+                                  GhostConv(c_, c2, 1, 1, act=False))   # Squeeze pw-linear
+
+        self.shortcut = nn.Identity() if (c1 == c2 and s == 1) else \
+                                                nn.Sequential(Conv(c1, c1, 3, s=s, p=1, g=c1, act=False), \
+                                                Conv(c1, c2, 1, 1, act=False)) # 避免stride=2时 通道数改变的情况
 
     def forward(self, x):
+        # print(self.conv(x).shape)
+        # print(self.shortcut(x).shape)
         return self.conv(x) + self.shortcut(x)
 
 
@@ -2845,8 +2851,10 @@ class ShuffleV2Block(nn.Module):
             nn.Conv2d(inp if (self.stride > 1) else branch_features, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
             nn.BatchNorm2d(branch_features),
             nn.SiLU(),
+
             self.depthwise_conv(branch_features, branch_features, kernel_size=3, stride=self.stride, padding=1),
             nn.BatchNorm2d(branch_features),
+
             nn.Conv2d(branch_features, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
             nn.BatchNorm2d(branch_features),
             nn.SiLU(),
@@ -2864,3 +2872,189 @@ class ShuffleV2Block(nn.Module):
             out = torch.cat((self.branch1(x), self.branch2(x)), dim=1)
         out = channel_shuffle(out, 2)
         return out
+
+
+# ShuffleNetV2
+class Conv_maxpool(nn.Module):
+    def __init__(self, c1, c2):  # ch_in, ch_out
+        super().__init__()
+        self.conv= nn.Sequential(
+            nn.Conv2d(c1, c2, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(c2),
+            nn.ReLU(inplace=True),
+        )
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
+
+    def forward(self, x):
+        return self.maxpool(self.conv(x))
+
+
+class ShuffleNetV2_InvertedResidual(nn.Module):
+    def __init__(self, inp, oup, stride):  # ch_in, ch_out, stride
+        super().__init__()
+
+        self.stride = stride
+
+        branch_features = oup // 2
+        assert (self.stride != 1) or (inp == branch_features << 1)
+
+        if self.stride == 2:
+            # copy input
+            self.branch1 = nn.Sequential(
+                nn.Conv2d(inp, inp, kernel_size=3, stride=self.stride, padding=1, groups=inp),
+                nn.BatchNorm2d(inp),
+                nn.Conv2d(inp, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
+                nn.BatchNorm2d(branch_features),
+                nn.ReLU(inplace=True))
+        else:
+            self.branch1 = nn.Sequential()
+
+        self.branch2 = nn.Sequential(
+            nn.Conv2d(inp if (self.stride == 2) else branch_features, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(branch_features),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(branch_features, branch_features, kernel_size=3, stride=self.stride, padding=1, groups=branch_features),
+            nn.BatchNorm2d(branch_features),
+
+            nn.Conv2d(branch_features, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(branch_features),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        if self.stride == 1:
+            x1, x2 = x.chunk(2, dim=1)
+            out = torch.cat((x1, self.branch2(x2)), dim=1)
+        else:
+            out = torch.cat((self.branch1(x), self.branch2(x)), dim=1)
+
+        out = self.channel_shuffle(out, 2)
+
+        return out
+
+    def channel_shuffle(self, x, groups):
+        N, C, H, W = x.size()
+        out = x.view(N, groups, C // groups, H, W).permute(0, 2, 1, 3, 4).contiguous().view(N, C, H, W)
+
+        return out
+# -------------------------------------------------------------------------
+
+
+# EfficientNetLite
+class drop_connect:
+    def __init__(self, drop_connect_rate):
+        self.drop_connect_rate = drop_connect_rate
+
+    def forward(self, x, training):
+        if not training:
+            return x
+        keep_prob = 1.0 - self.drop_connect_rate
+        batch_size = x.shape[0]
+        random_tensor = keep_prob
+        random_tensor += torch.rand([batch_size, 1, 1, 1], dtype=x.dtype, device=x.device)
+        binary_mask = torch.floor(random_tensor) # 1
+        x = (x / keep_prob) * binary_mask
+        return x
+
+
+class stem(nn.Module):
+    def __init__(self, c1, c2, act='ReLU6'):
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c2, kernel_size=3, stride=2, padding=1, bias=False)
+        self.bn = nn.BatchNorm2d(num_features=c2)
+        if act == 'ReLU6':
+            self.act = nn.ReLU6(inplace=True)
+
+    def forward(self, x):
+        return self.act(self.bn(self.conv(x)))
+
+
+class MBConvBlock(nn.Module):
+    def __init__(self, inp, final_oup, k, s, expand_ratio, drop_connect_rate, has_se=False):
+        super(MBConvBlock, self).__init__()
+
+        self._momentum = 0.01
+        self._epsilon = 1e-3
+        self.input_filters = inp
+        self.output_filters = final_oup
+        self.stride = s
+        self.expand_ratio = expand_ratio
+        self.has_se = has_se
+        self.id_skip = True  # skip connection and drop connect
+        se_ratio = 0.25
+
+        # Expansion phase
+        oup = inp * expand_ratio  # number of output channels
+        if expand_ratio != 1:
+            self._expand_conv = nn.Conv2d(in_channels=inp, out_channels=oup, kernel_size=1, bias=False)
+            self._bn0 = nn.BatchNorm2d(num_features=oup, momentum=self._momentum, eps=self._epsilon)
+
+        # Depthwise convolution phase
+        self._depthwise_conv = nn.Conv2d(
+            in_channels=oup, out_channels=oup, groups=oup,  # groups makes it depthwise
+            kernel_size=k, padding=(k - 1) // 2, stride=s, bias=False)
+        self._bn1 = nn.BatchNorm2d(num_features=oup, momentum=self._momentum, eps=self._epsilon)
+
+        # Squeeze and Excitation layer, if desired
+        if self.has_se:
+            num_squeezed_channels = max(1, int(inp * se_ratio))
+            self.se = SeBlock(oup, 4)
+
+        # Output phase
+        self._project_conv = nn.Conv2d(in_channels=oup, out_channels=final_oup, kernel_size=1, bias=False)
+        self._bn2 = nn.BatchNorm2d(num_features=final_oup, momentum=self._momentum, eps=self._epsilon)
+        self._relu = nn.ReLU6(inplace=True)
+
+        self.drop_connect = drop_connect(drop_connect_rate)
+
+    def forward(self, x, drop_connect_rate=None):
+        """
+        :param x: input tensor
+        :param drop_connect_rate: drop connect rate (float, between 0 and 1)
+        :return: output of block
+        """
+
+        # Expansion and Depthwise Convolution
+        identity = x
+        if self.expand_ratio != 1:
+            x = self._relu(self._bn0(self._expand_conv(x)))
+        x = self._relu(self._bn1(self._depthwise_conv(x)))
+
+        # Squeeze and Excitation
+        if self.has_se:
+            x = self.se(x)
+
+        x = self._bn2(self._project_conv(x))
+
+        # Skip connection and drop connect
+        if self.id_skip and self.stride == 1 and self.input_filters == self.output_filters:
+            if drop_connect_rate:
+                x = self.drop_connect(x, training=self.training)
+            x += identity  # skip connection
+        return x
+
+
+# PP-LCNet
+
+class DepthSepConv(nn.Module):
+    def __init__(self, inp, oup, dw_size, stride, use_se):
+        super(DepthSepConv, self).__init__()
+        self.stride = stride
+        self.inp = inp
+        self.oup = oup
+        self.dw_size = dw_size
+        self.dw_sp = nn.Sequential(
+            nn.Conv2d(self.inp, self.inp, kernel_size=self.dw_size, stride=self.stride, padding=(dw_size - 1) // 2, groups=self.inp, bias=False),
+            nn.BatchNorm2d(self.inp),
+            nn.Hardswish(),
+
+            SeBlock(self.inp, reduction=16) if use_se else nn.Sequential(),
+
+            nn.Conv2d(self.inp, self.oup, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(self.oup),
+            nn.Hardswish())
+
+    def forward(self, x):
+        y = self.dw_sp(x)
+        return y

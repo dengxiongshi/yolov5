@@ -30,16 +30,16 @@ def apply_gaussian_filter(image):
     return cv2.GaussianBlur(image, (5, 5), 1.0)
 
 
-image_path = r"C:\Users\dengxs\Desktop\dengxs\2.6x\vi"
-save_path = r"C:\Users\dengxs\Desktop\dengxs\2.6x\vi_convert"
+image_path = r"C:\Users\dengxs\Desktop\dengxs\20241104\ir_denoise"
+save_path = r"C:\Users\dengxs\Desktop\dengxs\20241104\ir_resize_3"
 
 os.makedirs(save_path, exist_ok=True)
 
-images = glob.glob(image_path + '/*.*')
+images = glob.glob(image_path + '/*.jpg')
 
 pbar = tqdm.tqdm(images, desc=f'Converting {image_path}')
 
-image_size = (640, 512)
+image_size = (1920, 1536)
 
 for p in pbar:
     basename = os.path.basename(p)
@@ -47,10 +47,10 @@ for p in pbar:
 
     src_image = cv2.imread(p)
     # src_image = cv2.cvtColor(src_image, cv2.COLOR_BGR2GRAY)
-    # image = apply_gaussian_filter(src_image)
+    # image = convert(src_image)
+    # image = apply_gaussian_filter(image)
     
     image = letterbox_image(src_image, image_size)
-    src_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    image = convert(src_image)
+    # src_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     cv2.imwrite(save_name, image)

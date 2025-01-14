@@ -7,14 +7,11 @@ import os
 # 设置数据集路径
 from tqdm import tqdm
 
-dataset_folder = r"F:\BaiduNetdiskDownload\BoadData\train_data"
+dataset_folder = r"F:\datasets\VOC2007\train_data"
+os.makedirs(dataset_folder, exist_ok=True)
 
-if not os.path.exists(dataset_folder):
-    os.makedirs(dataset_folder)
-
-
-images_path = r"F:\BaiduNetdiskDownload\BoadData\Ship Identification\images"
-labels_path = r"F:\BaiduNetdiskDownload\BoadData\Ship Identification\labels"
+images_path = r"F:\datasets\VOC2007\JPEGImages"
+labels_path = r"F:\datasets\VOC2007\labels"
 
 IMG_FORMATS = "bmp", "dng", "jpeg", "jpg", "mpo", "png", "tif", "tiff", "webp", "pfm"  # include image suffixes
 files = sorted(glob.glob(os.path.join(images_path, "*.*")))

@@ -12,14 +12,13 @@ def change_label(source_file, destination_file, mode='w'):
         parts = line.split()
         if len(parts) > 0:
             number = int(parts[0])
-            if number != 0:
-                if number in [3, 4]:
-                    parts[0] = '2'
+            while number == 0:
+                print(source_file)
+                break
+                # labels.append(' '.join(parts))
 
-                labels.append(' '.join(parts))
-
-    with open(destination_file, mode) as destination:
-        destination.write('\n'.join(labels))
+    # with open(destination_file, mode) as destination:
+    #     destination.write('\n'.join(labels))
 
 
 def del_label(source_file, destination_file):
@@ -45,11 +44,11 @@ def get_files(directory):
 
 
 if __name__ == "__main__":
-    src_label = r"E:\downloads\compress\datasets\VisDrone2019\train_data\labels\val"
-    save_label = r"E:\downloads\compress\datasets\VisDrone2019\train_data\labels\val_new"
+    src_label = r"\\10.10.10.8\determined\alluxio\public\dengxiongshi\datasets\person_car\20250109\labels_no_small\train"
+    save_label = r"\\10.10.10.8\determined\alluxio\public\dengxiongshi\datasets\person_car\20250109\labels\val_new"
 
-    if os.path.exists(save_label) == False:
-        os.makedirs(save_label)
+    # if os.path.exists(save_label) == False:
+    #     os.makedirs(save_label)
 
     src_label_list = glob.glob(src_label + '/*.txt')
     # save_label_list = glob.glob(save_label + '/*.txt')

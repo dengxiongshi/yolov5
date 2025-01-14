@@ -454,6 +454,41 @@ def smart_resume(ckpt, optimizer, ema=None, weights="yolov5s.pt", epochs=300, re
     return best_fitness, start_epoch, epochs
 
 
+def choose_backend(args):
+    from mqbench.prepare_by_platform import BackendType
+
+    if args.BackendType == "Academic":
+        return BackendType.Academic
+    if args.BackendType == "Tensorrt":
+        return BackendType.Tensorrt
+    if args.BackendType == "SNPE":
+        return BackendType.SNPE
+    if args.BackendType == "PPLW8A16":
+        return BackendType.PPLW8A16
+    if args.BackendType == "NNIE":
+        return BackendType.NNIE
+    if args.BackendType == "Vitis":
+        return BackendType.Vitis
+    if args.BackendType == "ONNX_QNN":
+        return BackendType.ONNX_QNN
+    if args.BackendType == "PPLCUDA":
+        return BackendType.PPLCUDA
+    if args.BackendType == "OPENVINO":
+        return BackendType.OPENVINO
+    if args.BackendType == "Tengine_u8":
+        return BackendType.Tengine_u8
+    if args.BackendType == "Tensorrt_NLP":
+        return BackendType.Tensorrt_NLP
+    if args.BackendType == "Academic_NLP":
+        return BackendType.Academic_NLP
+    if args.BackendType == "STPU":
+        return BackendType.STPU
+
+    else:
+        print("error BackendType name, not support: ", args.BackendType)
+        exit(0)
+
+
 class EarlyStopping:
     # YOLOv5 simple early stopper
     def __init__(self, patience=30):

@@ -21,6 +21,7 @@ import os
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+# os.environ['NCCL_P2P_DISABLE'] = '1'
 
 import random
 import subprocess

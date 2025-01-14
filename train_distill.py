@@ -25,8 +25,10 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from distill.datasets_distill import create_dataloader_distill
+
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 try:
     import comet_ml  # must be imported before torch (if installed)
@@ -96,6 +98,8 @@ from utils.torch_utils import (
     smart_resume,
     torch_distributed_zero_first,
 )
+
+from distill.create_distill_model import create_teacher_model, infer_teacher
 
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv("RANK", -1))
@@ -254,7 +258,7 @@ def train(hyp, opt, device, callbacks):
         LOGGER.info("Using SyncBatchNorm()")
 
     # Trainloader
-    train_loader, dataset = create_dataloader(
+    train_loader, dataset = create_dataloader_distill(
         train_path,
         imgsz,
         batch_size // WORLD_SIZE,
@@ -334,6 +338,13 @@ def train(hyp, opt, device, callbacks):
         f"Logging results to {colorstr('bold', save_dir)}\n"
         f'Starting training for {epochs} epochs...'
     )
+
+    #######################################teacher模型初始化#####################
+    from distill.distill_loss import ComputeLossDistill
+    compute_loss_distill = ComputeLossDistill(model)  # init loss class
+
+    teacher_model = create_teacher_model(opt.weights_teacher, device)
+
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         callbacks.run("on_train_epoch_start")
         model.train()
@@ -349,6 +360,8 @@ def train(hyp, opt, device, callbacks):
         # dataset.mosaic_border = [b - imgsz, -b]  # height, width borders
 
         mloss = torch.zeros(3, device=device)  # mean losses
+        teacher_mloss = torch.zeros(3, device=device)
+
         if RANK != -1:
             train_loader.sampler.set_epoch(epoch)
         pbar = enumerate(train_loader)
@@ -356,10 +369,11 @@ def train(hyp, opt, device, callbacks):
         if RANK in {-1, 0}:
             pbar = tqdm(pbar, total=nb, bar_format=TQDM_BAR_FORMAT)  # progress bar
         optimizer.zero_grad()
-        for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
+        for i, (imgs, imgs_teacher, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             callbacks.run("on_train_batch_start")
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255  # uint8 to float32, 0-255 to 0.0-1.0
+            imgs_teacher = imgs_teacher.to(device, non_blocking=True).float() / 255  # 教师推理图片处理
 
             # Warmup
             if ni <= nw:
@@ -379,11 +393,16 @@ def train(hyp, opt, device, callbacks):
                 if sf != 1:
                     ns = [math.ceil(x * sf / gs) * gs for x in imgs.shape[2:]]  # new shape (stretched to gs-multiple)
                     imgs = nn.functional.interpolate(imgs, size=ns, mode="bilinear", align_corners=False)
+                    imgs_teacher = nn.functional.interpolate(imgs_teacher, size=ns, mode='bilinear', align_corners=False)
 
             # Forward
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
-                loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
+                student_loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
+                teacher_targets = infer_teacher(teacher_model, imgs_teacher, model.names)
+
+                teacher_loss, teacher_loss_items = compute_loss_distill(pred, teacher_targets.to(device))
+                loss = student_loss + teacher_loss
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
                 if opt.quad:
@@ -516,6 +535,8 @@ def train(hyp, opt, device, callbacks):
 def parse_opt(known=False):
     """Parses command-line arguments for YOLOv5 training, validation, and testing."""
     parser = argparse.ArgumentParser()
+    parser.add_argument('--weights_teacher', default=ROOT / 'weights/yolov5m.pt', help='initial weights path')
+
     parser.add_argument("--weights", type=str, default=ROOT / "weights/yolov5s.pt", help="initial weights path")
     parser.add_argument("--cfg", type=str, default="", help="model.yaml path")
     parser.add_argument("--data", type=str, default=ROOT / "data/coco128.yaml", help="dataset.yaml path")
@@ -535,7 +556,7 @@ def parse_opt(known=False):
     parser.add_argument("--bucket", type=str, default="", help="gsutil bucket")
     parser.add_argument("--cache", type=str, nargs="?", const="ram", help="image --cache ram/disk")
     parser.add_argument("--image-weights", action="store_true", help="use weighted image selection for training")
-    parser.add_argument("--device", default="0", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
+    parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
     parser.add_argument("--multi-scale", action="store_true", help="vary img-size +/- 50%%")
     parser.add_argument("--single-cls", action="store_true", help="train multi-class data as single-class")
     parser.add_argument("--optimizer", type=str, choices=["SGD", "Adam", "AdamW"], default="SGD", help="optimizer")

@@ -7,7 +7,7 @@ image_dir = r"E:\downloads\compress\datasets\fire_smoke\fire_smoke_datasets-mast
 
 Annotation_dir = r"E:\downloads\compress\datasets\fire_smoke\fire_smoke_datasets-master\Annotations"
 
-save_dir = r"E:\downloads\compress\datasets\fire_smoke\fire_smoke_datasets-master\Annotations_new"
+save_dir = r"E:\downloads\compress\datasets\quantization_images\labels"
 
 os.makedirs(save_dir, exist_ok=True)
 

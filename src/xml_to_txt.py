@@ -96,12 +96,12 @@ if __name__ == "__main__":
     #            "tvmonitor"
     #            ]
 
-    # classes = ["face",
-    #            "person",
-    #            "car",
-    #            "bus",
-    #            "truck"
-    #            ]
+    classes = ["face",
+               "person",
+               "car",
+               "bus",
+               "truck"
+               ]
     # classes = ["ore carrier",
     #             "passenger ship",
     #             "container ship",
@@ -109,13 +109,13 @@ if __name__ == "__main__":
     #             "general cargo ship",
     #             "fishing boat",
     #             "patrol boat"]
-    classes = ["boat"]
+    # classes = ["boat"]
 
     IMG_FORMATS = "bmp", "dng", "jpeg", "jpg", "mpo", "png", "tif", "tiff", "webp", "pfm"  # include image suffixes
 
-    image_dir = r"F:\BaiduNetdiskDownload\BoadData\myDataset\new_images"
-    annotations_dir = r"F:\BaiduNetdiskDownload\BoadData\myDataset\annotations"
-    labels_dir = r"F:\BaiduNetdiskDownload\BoadData\myDataset\labels"
+    image_dir = r"F:\datasets\VOC2007\JPEGImages"
+    annotations_dir = r"F:\datasets\VOC2007\Annotations"
+    labels_dir = r"F:\datasets\VOC2007\labels"
 
     if not os.path.exists(labels_dir):
         os.makedirs(labels_dir)

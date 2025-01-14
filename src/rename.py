@@ -38,8 +38,9 @@ def rename_files(directory):
         #     os.rename(old_path, new_path)
         #
         # else:
-        new_name = f"{i}{file_ext}"
+        # new_name = f"{i}{file_ext}"
         # new_name = "thunder_" + basename
+        new_name = name + '.jpg'
         # 构建完整的路径
         old_path = os.path.join(directory, file_name)
         new_path = os.path.join(directory, new_name)
@@ -50,7 +51,7 @@ def rename_files(directory):
 
 if __name__ == "__main__":
     # 指定目标目录
-    target_directory = r"C:\Users\dengxs\Desktop\dengxs\20240926\vi"
+    target_directory = r"C:\Users\dengxs\Desktop\dengxs\2.6x\ir_convert"
 
     # 调用函数进行文件重命名
     rename_files(target_directory)

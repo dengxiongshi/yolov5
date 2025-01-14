@@ -1,3 +1,5 @@
+import os.path
+
 import yaml
 from models.yolo_prune import *
 
@@ -40,6 +42,8 @@ def prune_and_eval(model, ignore_idx, opt):
     ABE = AdaptiveBNEval(model, opt, device, hyp)
     mAP = ABE(compact_model)
 
+    save_yaml = os.path.dirname(opt.path)
+    Path(save_yaml).mkdir(parents=True, exist_ok=True)
     with open(opt.path, "w", encoding='utf-8') as f:
         yaml.safe_dump(pruned_yaml, f, encoding='utf-8', allow_unicode=True, default_flow_style=True, sort_keys=False)
         # yaml.dump(pruned_yaml, f, Dumper=ruamel.yaml.RoundTripDumper)
@@ -54,21 +58,21 @@ def prune_and_eval(model, ignore_idx, opt):
             'opt': None,
             'git': None,  # {remote, branch, commit} if a git repo
             'date': None}
-    torch.save(ckpt, opt.weights[:-3] + '-Slimpruned.pt')
+    torch.save(ckpt, opt.weights[:-3] + '_' + str(opt.global_percent) + '-Slimpruned.pt')
 
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', type=str, default="runs/train/slim/boat_person_car_yolov5s-pruning_20240916/weights/best.pt", help='initial weights path')
-    parser.add_argument('--cfg', type=str, default='models/prunModels/yolov5s-pruning.yaml', help='model.yaml')
-    parser.add_argument('--data', type=str, default='datasets/coco128/coco.yaml', help='data.yaml path')
+    parser.add_argument('--weights', type=str, default="runs/train/slim/yolov5s_xsmall_autoanchor_prune_20241106/weights/best.pt", help='initial weights path')
+    parser.add_argument('--cfg', type=str, default='models/prunModels/yolov5s_xsmall_autoanchor/yolov5s_xsmall_autoanchor.yaml', help='model.yaml')
+    parser.add_argument('--data', type=str, default='/determined/alluxio/public/dengxiongshi/datasets/VisDrone2019/train_data_20241105/person_car.yaml', help='data.yaml path')
     parser.add_argument('--single-cls', action='store_true', help='train multi-class data as single-class')
     parser.add_argument('--hyp', type=str, default='data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
-    parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    parser.add_argument('--device', default='1', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--batch-size', type=int, default=32, help='total batch size for all GPUs')
     parser.add_argument('--img-size', nargs='+', type=int, default=[640, 640], help='[train, test] image sizes')
     parser.add_argument('--workers', type=int, default=8, help='maximum number of dataloader workers')
-    parser.add_argument('--path', type=str, default='models/pruneModels/yolov5s-pruned_test.yaml',
+    parser.add_argument('--path', type=str, default='models/prunModels/yolov5s_xsmall_autoanchor/yolov5s_xsmall_autoanchor_pruned_0.6.yaml',
                         help='the path to save pruned yaml')
 
     parser.add_argument('--global_percent', type=float, default=0.6, help='global channel prune percent')

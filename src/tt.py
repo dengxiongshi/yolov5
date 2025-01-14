@@ -1,6 +1,25 @@
 import os
 import glob
+from os.path import join
+
 from tqdm import tqdm
+
+def list_images(directory):
+    images = []
+    names = []
+    dir = os.listdir(directory)
+    dir.sort()
+    for file in dir:
+        name = file.lower()
+        if name.endswith('.png'):
+            images.append(join(directory, file))
+        elif name.endswith('.jpg'):
+            images.append(join(directory, file))
+        elif name.endswith('.jpeg'):
+            images.append(join(directory, file))
+        name1 = name.split('.')
+        names.append(name1[0])
+    return images
 
 
 def change_label(source_file, destination_file):

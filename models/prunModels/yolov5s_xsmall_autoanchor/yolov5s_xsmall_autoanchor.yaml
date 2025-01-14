@@ -1,15 +1,15 @@
 # YOLOv5 🚀 by Ultralytics, GPL-3.0 license
 
 # Parameters
-nc: 80  # number of classes
+nc: 2  # number of classes
 depth_multiple: 0.33  # model depth multiple
 width_multiple: 0.50  # layer channel multiple
 #activation: nn.SiLU()
-anchors: 3
-#  - [9,12, 14,17, 21,26]  #P2/4
-#  - [32,41, 50,64, 47,137]  # P3/8
-#  - [89,123, 114,218, 140,336]  # P4/16
-#  - [217,292, 501,319, 338,488]  # P5/32
+anchors:
+  - [ 9,10, 8,16, 16,11 ]  #P2/4
+  - [ 12,23, 18,19, 29,14 ]  # P3/8
+  - [ 22,35, 39,22, 36,48 ]  # P4/16
+  - [ 65,38, 84,94, 499,468 ]  # P5/32
 
 # YOLOv5 v6.0 backbone
 backbone:
